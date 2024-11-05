@@ -3,15 +3,14 @@ import os
 import os.path as osp
 import time
 from typing import List, Dict, Union
-
-import backoff
-import requests
+from pathlib import Path
+import anthropic
 
 from ai_engineer.llm import (
     get_response_from_llm,
     extract_json_between_markers,
     create_client,
-    AVAILABLE_LLMS,
+    # AVAILABLE_LLMS,
 )
 from ai_engineer.prompt_templates import (
     SOLUTION_GENERATION_PROMPT,
@@ -20,12 +19,14 @@ from ai_engineer.prompt_templates import (
     SYSTEM_MESSAGE,
 )
 
-S2_API_KEY = os.getenv("S2_API_KEY")
+
+def generate_first_ideas(base_path: Path, client, model):
+    pass
 
 
 # GENERATE IDEAS
 def generate_solutions(
-    base_dir,
+    base_path: Path,
     client,
     model,
     skip_generation=False,
@@ -35,7 +36,7 @@ def generate_solutions(
     if skip_generation:
         # Load existing ideas from file
         try:
-            with open(osp.join(base_dir, "ideas.json"), "r") as f:
+            with open(base_path / "ideas.json", "r") as f:
                 ideas = json.load(f)
             print("Loaded existing ideas:")
             for idea in ideas:
@@ -47,15 +48,15 @@ def generate_solutions(
             print("Error decoding existing ideas. Generating new ideas.")
 
     idea_str_archive = []
-    with open(osp.join(base_dir, "seed_ideas.json"), "r") as f:
+    with open(base_path / "seed_ideas.json", "r") as f:
         seed_ideas = json.load(f)
     for seed_idea in seed_ideas:
         idea_str_archive.append(json.dumps(seed_idea))
 
-    with open(osp.join(base_dir, "experiment.py"), "r") as f:
+    with open(base_path / "experiment.py", "r") as f:
         code = f.read()
 
-    with open(osp.join(base_dir, "prompt.json"), "r") as f:
+    with open(base_path / "prompt.json", "r") as f:
         prompt = json.load(f)
 
     idea_system_prompt = prompt["system"]
@@ -120,7 +121,7 @@ def generate_solutions(
     for idea_str in idea_str_archive:
         ideas.append(json.loads(idea_str))
 
-    with open(osp.join(base_dir, "ideas.json"), "w") as f:
+    with open(base_path / "ideas.json", "w") as f:
         json.dump(ideas, f, indent=4)
 
     return ideas
@@ -223,41 +224,41 @@ Scores of 0 indicate the solution failed either during experimentation, writeup 
     return idea_archive
 
 
-def on_backoff(details):
-    print(
-        f"Backing off {details['wait']:0.1f} seconds after {details['tries']} tries "
-        f"calling function {details['target'].__name__} at {time.strftime('%X')}"
-    )
+# def on_backoff(details):
+#     print(
+#         f"Backing off {details['wait']:0.1f} seconds after {details['tries']} tries "
+#         f"calling function {details['target'].__name__} at {time.strftime('%X')}"
+#     )
 
 
-@backoff.on_exception(
-    backoff.expo, requests.exceptions.HTTPError, on_backoff=on_backoff
-)
-def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
-    if not query:
-        return None
-    rsp = requests.get(
-        "https://api.semanticscholar.org/graph/v1/paper/search",
-        headers={"X-API-KEY": S2_API_KEY},
-        params={
-            "query": query,
-            "limit": result_limit,
-            "fields": "title,authors,venue,year,abstract,citationStyles,citationCount",
-        },
-    )
-    print(f"Response Status Code: {rsp.status_code}")
-    print(
-        f"Response Content: {rsp.text[:500]}"
-    )  # Print the first 500 characters of the response content
-    rsp.raise_for_status()
-    results = rsp.json()
-    total = results["total"]
-    time.sleep(1.0)
-    if not total:
-        return None
+# @backoff.on_exception(
+#     backoff.expo, requests.exceptions.HTTPError, on_backoff=on_backoff
+# )
+# def search_for_papers(query, result_limit=10) -> Union[None, List[Dict]]:
+# if not query:
+#     return None
+# rsp = requests.get(
+#     "https://api.semanticscholar.org/graph/v1/paper/search",
+#     headers={"X-API-KEY": S2_API_KEY},
+#     params={
+#         "query": query,
+#         "limit": result_limit,
+#         "fields": "title,authors,venue,year,abstract,citationStyles,citationCount",
+#     },
+# )
+# print(f"Response Status Code: {rsp.status_code}")
+# print(
+#     f"Response Content: {rsp.text[:500]}"
+# )  # Print the first 500 characters of the response content
+# rsp.raise_for_status()
+# results = rsp.json()
+# total = results["total"]
+# time.sleep(1.0)
+# if not total:
+#     return None
 
-    papers = results["data"]
-    return papers
+# papers = results["data"]
+# return papers
 
 
 # Update the novelty check to focus on technical feasibility
@@ -344,57 +345,3 @@ def check_solution_feasibility(
         json.dump(ideas, f, indent=4)
 
     return ideas
-
-
-if __name__ == "__main__":
-    MAX_NUM_GENERATIONS = 32
-    NUM_REFLECTIONS = 5
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate AI scientist ideas")
-    # add type of experiment (nanoGPT, Boston, etc.)
-    parser.add_argument(
-        "--experiment",
-        type=str,
-        default="nanoGPT",
-        help="Experiment to run AI Scientist on.",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="gpt-4o-2024-05-13",
-        choices=AVAILABLE_LLMS,
-        help="Model to use for AI Scientist.",
-    )
-    parser.add_argument(
-        "--skip-idea-generation",
-        action="store_true",
-        help="Skip idea generation and use existing ideas.",
-    )
-    parser.add_argument(
-        "--check-feasibility",
-        action="store_true",
-        help="Check feasibility of ideas.",
-    )
-    args = parser.parse_args()
-
-    # Create client
-    client, client_model = create_client(args.model)
-
-    base_dir = osp.join("templates", args.experiment)
-    results_dir = osp.join("results", args.experiment)
-    ideas = generate_solutions(
-        base_dir,
-        client=client,
-        model=client_model,
-        skip_generation=args.skip_idea_generation,
-        max_solutions=MAX_NUM_GENERATIONS,
-        num_iterations=NUM_REFLECTIONS,
-    )
-    if args.check_feasibility:
-        ideas = check_solution_feasibility(
-            ideas,
-            base_dir=base_dir,
-            client=client,
-            model=client_model,
-        )
