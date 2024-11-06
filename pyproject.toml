@@ -6,11 +6,26 @@ authors = ["gnart <nvtrang91@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.10,<3.13"
 anthropic = "^0.39.0"
 backoff = "^2.2.1"
 openai = "^1.54.0"
+chromadb = "0.5.3"
+typing-extensions = "^4.12.2"
+autogen = "^0.3.1"
+ipython = "^8.29.0"
+markdownify = "^0.13.1"
+pypdf = "^5.1.0"
+sentence-transformers = "^3.2.1"
+polars = "^1.12.0"
+flaml = { extras = ["automl"], version = "^2.3.2" }
+chroma-hnswlib = "0.7.3"
+pypika = "0.48.9"
+ipywidgets = "^8.1.5"
 
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
 
 [build-system]
 requires = ["poetry-core"]
